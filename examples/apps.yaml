@@ -1,0 +1,32 @@
+# Example AppDaemon apps.yaml for this app
+
+light_automation_manager:
+  module: lights
+  class: LightAutomationManager
+  apps:
+    - kitchen_light
+
+kitchen_light:
+  module: lights
+  class: LightController
+  light: light.kitchen
+  triggers:
+    - presence:
+        - binary_sensor.kitchen_motion
+  delay_off: 120
+  lux_sensor: sensor.kitchen_illuminance
+  lux_threshold: 20
+  only_when_dark: true
+
+# Adaptive Lighting
+  adaptive_lighting_switch: switch.adaptive_lighting_kitchen
+  al_use_targets: true
+  al_take_over_on_manual: true
+  al_manual_reset_seconds: 900
+
+# Block only auto-ON during quiet hours
+  block_windows:
+    - start: "00:00"
+      end: "06:30"
+      days: [mon, tue, wed, thu, fri, sat, sun]
+      actions: on
