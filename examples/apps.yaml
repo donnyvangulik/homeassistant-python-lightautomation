@@ -1,32 +1,202 @@
-# Example AppDaemon apps.yaml for this app
+# ============================================================
+# AppDaemon Light Controller – Full Capabilities Example
+# ============================================================
 
+# A tiny manager that aggregates all rooms and exposes a helper
+# binary_sensor with the list of "re-automate" buttons to show in HA.
 light_automation_manager:
   module: lights
   class: LightAutomationManager
   apps:
     - kitchen_light
+    - living_room_lights
+    - hallway_light
+    - garage_lights
 
+# ------------------------------------------------------------
+# Example 1: Kitchen – Motion + Lux + Adaptive Lighting + Quiet Hours
+# ------------------------------------------------------------
 kitchen_light:
   module: lights
   class: LightController
-  light: light.kitchen
+
+  # Control one or more entities (supports light.* and switch.*)
+  light:
+    - light.kitchen_ceiling
+    - light.kitchen_counter
+
+  # Presence/motion triggers (any of these ON = presence)
   triggers:
     - presence:
-        - binary_sensor.kitchen_motion
-  delay_off: 120
-  lux_sensor: sensor.kitchen_illuminance
-  lux_threshold: 20
-  only_when_dark: true
+        - binary_sensor.kitchen_motion_main
+        - binary_sensor.kitchen_motion_secondary
 
-# Adaptive Lighting
+  # Auto-off delay once presence clears
+  delay_off: 150   # seconds
+
+  # Lux gating (only auto-ON when it's dark enough)
+  lux_sensor: sensor.kitchen_illuminance
+  lux_threshold: 20          # turn on when lux <= 20
+  only_when_dark: true       # if false or no lux_sensor: always allowed to turn on
+
+  # Manual OFF -> re-automation after this timeout
+  manual_off_reautomate_delay: 3600   # seconds
+
+  # If user turns the light ON manually, we auto-re-automate soon after motion
+  motion_reauto_seconds: 5
+
+  # Avoid reacting to our own turn_on/off echoes
+  echo_window: 3
+  echo_max_window: 60
+
+  # Ignore noisy events right after startup
+  boot_grace: 60
+
+  # Media dimming (optional): when any listed media_player is 'playing',
+  # dim lights to this brightness (pct). When stopped, restore prior levels.
+  media_players:
+    - media_player.kitchen_tv
+  media_dim_brightness_pct: 10   # dim to 10% while playing
+  # Use a default brightness when the app turns lights ON (if AL doesn't provide targets)
+  auto_brightness_pct: 75
+
+  # ---- Adaptive Lighting integration (optional) ----
   adaptive_lighting_switch: switch.adaptive_lighting_kitchen
+
+  # Use AL brightness/CT targets when *we* auto-turn-on
   al_use_targets: true
+
+  # If user tweaks brightness/CT while ON, mark AL manual for this light
   al_take_over_on_manual: true
+
+  # After no further tweaks for N seconds, hand control back to AL
   al_manual_reset_seconds: 900
 
-# Block only auto-ON during quiet hours
+  # Optionally override AL's own adapt toggles (otherwise read from switch attrs)
+  al_adapt_brightness: true
+  al_adapt_color: true
+
+  # ---- Time-based blocking (“quiet hours”) ----
+  # Block auto-ON from midnight to 06:30 daily (OFF still allowed)
   block_windows:
     - start: "00:00"
       end: "06:30"
       days: [mon, tue, wed, thu, fri, sat, sun]
       actions: on
+
+  # (Legacy alternative — supported but not recommended when block_windows is present)
+  # quiet_start: "00:00"
+  # quiet_end: "06:30"
+  # block_actions: on   # one of: on | off | on_off
+
+# ------------------------------------------------------------
+# Example 2: Living Room – Media Dimming + Long Manual Pause + AL
+# ------------------------------------------------------------
+living_room_lights:
+  module: lights
+  class: LightController
+
+  light: light.living_room_ambience
+
+  triggers:
+    - presence:
+        - binary_sensor.living_room_motion
+
+  delay_off: 60
+
+  # Lux gating
+  lux_sensor: sensor.living_room_illuminance
+  lux_threshold: 15
+  only_when_dark: true
+
+  # Long manual-off pause (8 hours)
+  manual_off_reautomate_delay: 28800
+  motion_reauto_seconds: 5
+
+  echo_window: 3
+  echo_max_window: 60
+  boot_grace: 60
+
+  # Media dimming: dim to 5% while TV plays; restore when stopped
+  media_players:
+    - media_player.living_room_tv
+  media_dim_brightness_pct: 5
+  # auto_brightness_pct: 100   # optional: default brightness when *we* turn on
+
+  # Adaptive Lighting
+  adaptive_lighting_switch: switch.adaptive_lighting_living_room
+  al_use_targets: true
+  al_take_over_on_manual: true
+  al_manual_reset_seconds: 900
+
+  # Block both ON and OFF during a daily nap window (example)
+  block_windows:
+    - start: "13:00"
+      end: "14:00"
+      days: [mon, tue, wed, thu, fri, sat, sun]
+      actions: on_off
+
+# ------------------------------------------------------------
+# Example 3: Hallway – No media/AL, simple ON-block in early morning
+# ------------------------------------------------------------
+hallway_light:
+  module: lights
+  class: LightController
+
+  light: light.hallway
+
+  triggers:
+    - presence:
+        - binary_sensor.hallway_motion
+
+  delay_off: 60
+
+  lux_sensor: sensor.hallway_illuminance
+  lux_threshold: 10
+  only_when_dark: true
+
+  manual_off_reautomate_delay: 3600
+  motion_reauto_seconds: 5
+  echo_window: 3
+  echo_max_window: 60
+  boot_grace: 60
+
+  # Block auto-ON early morning (allow OFF)
+  block_windows:
+    - start: "05:30"
+      end: "07:00"
+      days: [mon, tue, wed, thu, fri]
+      actions: on
+
+# ------------------------------------------------------------
+# Example 4: Garage – Controlling a switch instead of a light
+# ------------------------------------------------------------
+garage_lights:
+  module: lights
+  class: LightController
+
+  light: switch.garage_lights
+
+  triggers:
+    - presence:
+        - binary_sensor.garage_presence
+
+  delay_off: 150
+
+  # Optional lux gating
+  lux_sensor: sensor.garage_illuminance
+  lux_threshold: 10
+  only_when_dark: true
+
+  manual_off_reautomate_delay: 3600
+  motion_reauto_seconds: 5
+  echo_window: 3
+  echo_max_window: 60
+  boot_grace: 60
+
+  # Block auto-OFF overnight (keep lights on if they’re on)
+  block_windows:
+    - start: "23:00"
+      end: "06:00"
+      days: [fri, sat]
+      actions: off
